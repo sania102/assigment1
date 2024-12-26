@@ -1,5 +1,5 @@
 import streamlit as st
-from moviepy.editor import VideoFileClip
+from moviepy
 import os
 import time
 import speech_recognition as sr
