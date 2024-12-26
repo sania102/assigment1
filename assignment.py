@@ -97,3 +97,24 @@ if uploaded_video:
             file_name="uploaded_video.mp4",
             mime="video/mp4"
         )
+import os
+import subprocess
+import sys
+
+def install(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+try:
+    import moviepy.editor as mp
+except ImportError:
+    install("moviepy")
+
+try:
+    from pydub import AudioSegment
+except ImportError:
+    install("pydub")
+
+try:
+    import speech_recognition as sr
+except ImportError:
+    install("SpeechRecognition")
