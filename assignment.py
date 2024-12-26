@@ -22,18 +22,36 @@ def extract_audio_from_video(video_path):
     
     return audio_file
 
-# Function to transcribe audio
+# Function to transcribe audio in chunks
 def transcribe_audio(audio_path):
     recognizer = sr.Recognizer()
-    with sr.AudioFile(audio_path) as source:
-        audio_data = recognizer.record(source)
-    try:
-        text = recognizer.recognize_google(audio_data)
-        return text
-    except sr.UnknownValueError:
-        return "Audio could not be understood."
-    except sr.RequestError as e:
-        return f"Error with Google API: {e}"
+    
+    # Load the audio file using pydub
+    audio = AudioSegment.from_mp3(audio_path)
+    
+    # Split audio into chunks (e.g., 30 seconds per chunk)
+    chunk_length_ms = 30000  # 30 seconds
+    chunks = [audio[i:i+chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
+    
+    transcription = ""
+    
+    # Process each chunk of audio
+    for i, chunk in enumerate(chunks):
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
+            chunk.export(temp_wav.name, format="wav")
+            
+            # Use speech recognition to transcribe the audio chunk
+            with sr.AudioFile(temp_wav.name) as source:
+                audio_data = recognizer.record(source)
+                try:
+                    text = recognizer.recognize_google(audio_data)
+                    transcription += text + "\n"  # Add the transcribed text to the full transcription
+                except sr.UnknownValueError:
+                    transcription += "[Chunk {} could not be understood.]\n".format(i+1)
+                except sr.RequestError as e:
+                    transcription += "[Error with Google API: {}]\n".format(e)
+    
+    return transcription
 
 # Function to create the video highlight
 def create_highlight_video(video_path, start_time, end_time):
@@ -122,3 +140,4 @@ if uploaded_video:
             file_name="uploaded_video.mp4",
             mime="video/mp4"
         )
+
