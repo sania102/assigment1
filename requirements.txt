@@ -1,4 +1,3 @@
-streamlit
-moviepy
-SpeechRecognition
+opencv-python
 pydub
+SpeechRecognition
