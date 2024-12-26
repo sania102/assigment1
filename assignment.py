@@ -1,68 +1,62 @@
 import streamlit as st
 import cv2
 import os
+import io
 import time
 import speech_recognition as sr
 from pydub import AudioSegment
 import ffmpeg
-import tempfile
+from io import BytesIO
 
 st.title("Video Highlight Generator")
 
 # Upload video file
 uploaded_video = st.file_uploader("Upload a video", type=["mp4", "mov", "avi"])
 
-# Function to extract audio from video using ffmpeg
-def extract_audio_from_video(video_path):
-    # Generate temporary audio file path
-    audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-    
-    # Extract audio using ffmpeg
-    ffmpeg.input(video_path).output(audio_file).run()
-    
-    return audio_file
+# Function to extract audio from video
+def extract_audio_from_video(video_file):
+    # Save video to a temporary in-memory file
+    video_file.seek(0)  # Reset file pointer to the beginning
+    video_path = '/tmp/video.mp4'  # Temp path for the video file in memory
+    with open(video_path, 'wb') as f:
+        f.write(video_file.read())
 
-# Function to transcribe audio in chunks
+    # Use ffmpeg to extract audio
+    audio_path = '/tmp/audio.wav'  # Temp path for the audio file
+    ffmpeg.input(video_path).output(audio_path).run()
+
+    # Load and return the audio file
+    return audio_path
+
+# Function to transcribe audio
 def transcribe_audio(audio_path):
     recognizer = sr.Recognizer()
-    
-    # Load the audio file using pydub
-    audio = AudioSegment.from_mp3(audio_path)
-    
-    # Split audio into chunks (e.g., 30 seconds per chunk)
-    chunk_length_ms = 30000  # 30 seconds
-    chunks = [audio[i:i+chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
-    
-    transcription = ""
-    
-    # Process each chunk of audio
-    for i, chunk in enumerate(chunks):
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_wav:
-            chunk.export(temp_wav.name, format="wav")
-            
-            # Use speech recognition to transcribe the audio chunk
-            with sr.AudioFile(temp_wav.name) as source:
-                audio_data = recognizer.record(source)
-                try:
-                    text = recognizer.recognize_google(audio_data)
-                    transcription += text + "\n"  # Add the transcribed text to the full transcription
-                except sr.UnknownValueError:
-                    transcription += "[Chunk {} could not be understood.]\n".format(i+1)
-                except sr.RequestError as e:
-                    transcription += "[Error with Google API: {}]\n".format(e)
-    
-    return transcription
+    with sr.AudioFile(audio_path) as source:
+        audio_data = recognizer.record(source)
+    try:
+        text = recognizer.recognize_google(audio_data)
+        return text
+    except sr.UnknownValueError:
+        return "Audio could not be understood."
+    except sr.RequestError as e:
+        return f"Error with Google API: {e}"
 
 # Function to create the video highlight
-def create_highlight_video(video_path, start_time, end_time):
+def create_highlight_video(video_file, start_time, end_time):
+    # Read the uploaded video file
+    video_file.seek(0)
+    video_path = '/tmp/video.mp4'
+    with open(video_path, 'wb') as f:
+        f.write(video_file.read())
+
     # Use OpenCV to read the video and extract the highlight clip
     video = cv2.VideoCapture(video_path)
-    video_fps = video.get(cv2.CAP_PROP_FPS)  # Get FPS of the video
+    video_fps = video.get(cv2.CAP_PROP_FPS)  # Corrected this line
     start_frame = int(start_time * video_fps)
     end_frame = int(end_time * video_fps)
     
     # Create the output video file for the highlight
-    highlight_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+    highlight_path = '/tmp/highlight.mp4'  # Temp path for highlight
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(highlight_path, fourcc, video_fps, (int(video.get(3)), int(video.get(4))))
     
@@ -80,14 +74,14 @@ def create_highlight_video(video_path, start_time, end_time):
 
 # Process the uploaded video if any
 if uploaded_video:
-    video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-    with open(video_path, "wb") as f:
-        f.write(uploaded_video.read())
-    
     # Show the uploaded video
-    st.video(video_path)
+    st.video(uploaded_video)
 
     # Open the video with OpenCV to calculate duration
+    video_path = '/tmp/video.mp4'
+    with open(video_path, 'wb') as f:
+        f.write(uploaded_video.read())
+    
     video = cv2.VideoCapture(video_path)
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = video.get(cv2.CAP_PROP_FPS)  # Corrected this line
@@ -102,7 +96,7 @@ if uploaded_video:
     # Create highlight video when button is clicked
     if st.button("Create Highlight"):
         with st.spinner('Processing your highlight video...'):
-            highlight_path = create_highlight_video(video_path, start_time, end_time)
+            highlight_path = create_highlight_video(uploaded_video, start_time, end_time)
             
             # Display the highlight video
             st.video(highlight_path)
@@ -119,7 +113,7 @@ if uploaded_video:
         # Transcription section
         st.header("Transcription")
         with st.spinner('Extracting and transcribing audio...'):
-            audio_file = extract_audio_from_video(video_path)
+            audio_file = extract_audio_from_video(uploaded_video)
             transcription = transcribe_audio(audio_file)
             st.text_area("Transcription", transcription, height=200)
             
@@ -128,8 +122,8 @@ if uploaded_video:
                 st.download_button(
                     label="Download Audio",
                     data=file,
-                    file_name="audio.mp3",
-                    mime="audio/mp3"
+                    file_name="audio.wav",
+                    mime="audio/wav"
                 )
 
     # Download link for the original video
@@ -140,4 +134,3 @@ if uploaded_video:
             file_name="uploaded_video.mp4",
             mime="video/mp4"
         )
-
