@@ -3,4 +3,4 @@ opencv-python
 pydub
 SpeechRecognition
 ffmpeg-python
-tempfile
+
