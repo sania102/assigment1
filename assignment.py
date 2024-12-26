@@ -1,5 +1,5 @@
 import streamlit as st
-from moviepy
+import cv2
 import os
 import time
 import speech_recognition as sr
@@ -13,10 +13,10 @@ uploaded_video = st.file_uploader("Upload a video", type=["mp4", "mov", "avi"])
 
 # Function to extract audio from video
 def extract_audio_from_video(video_path):
-    video = VideoFileClip(video_path)
-    audio = video.audio
+    # Using pydub to extract audio from the video
+    audio = AudioSegment.from_file(video_path)
     audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
-    audio.write_audiofile(audio_file)
+    audio.export(audio_file, format="wav")
     return audio_file
 
 # Function to transcribe audio
@@ -34,10 +34,38 @@ def transcribe_audio(audio_path):
 
 # Function to create the video highlight
 def create_highlight_video(video_path, start_time, end_time):
-    video = VideoFileClip(video_path)
-    highlight_clip = video.subclip(start_time, end_time)
+    # Using OpenCV to read and process the video file
+    video = cv2.VideoCapture(video_path)
+    
+    # Get the FPS (frames per second) of the video
+    fps = video.get(cv2.CAP_PROP_FPS)
+    
+    # Calculate the frame positions for start and end time
+    start_frame = int(start_time * fps)
+    end_frame = int(end_time * fps)
+    
+    # Create the output path for the highlight video
     highlight_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-    highlight_clip.write_videofile(highlight_path, codec="libx264")
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Video codec
+    
+    # Prepare the video writer
+    out = cv2.VideoWriter(highlight_path, fourcc, fps, (int(video.get(3)), int(video.get(4))))
+    
+    # Read and write frames to create the highlight clip
+    frame_count = 0
+    while video.isOpened():
+        ret, frame = video.read()
+        if not ret:
+            break
+        if start_frame <= frame_count <= end_frame:
+            out.write(frame)
+        frame_count += 1
+        if frame_count > end_frame:
+            break
+    
+    # Release resources
+    video.release()
+    out.release()
     return highlight_path
 
 # Process the uploaded video if any
@@ -50,14 +78,15 @@ if uploaded_video:
     st.video(video_path)
 
     # Display video details
-    video_clip = VideoFileClip(video_path)
-    st.write(f"Duration: {video_clip.duration} seconds")
-    st.write(f"Resolution: {video_clip.size[0]}x{video_clip.size[1]}")
+    video = cv2.VideoCapture(video_path)
+    duration = video.get(cv2.CAP_PROP_FRAME_COUNT) / video.get(cv2.CAP_PROP_FPS)
+    st.write(f"Duration: {duration:.2f} seconds")
+    st.write(f"Resolution: {int(video.get(3))}x{int(video.get(4))}")
 
     # Get the start and end times for the highlight
     st.header("Create Highlight")
-    start_time = st.number_input("Start Time (seconds)", 0, int(video_clip.duration), 0)
-    end_time = st.number_input("End Time (seconds)", 0, int(video_clip.duration), 10)
+    start_time = st.number_input("Start Time (seconds)", 0, int(duration), 0)
+    end_time = st.number_input("End Time (seconds)", 0, int(duration), 10)
 
     # Create highlight video when button is clicked
     if st.button("Create Highlight"):
@@ -97,24 +126,4 @@ if uploaded_video:
             file_name="uploaded_video.mp4",
             mime="video/mp4"
         )
-import os
-import subprocess
-import sys
 
-def install(package):
-    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-
-try:
-    import moviepy.editor as mp
-except ImportError:
-    install("moviepy")
-
-try:
-    from pydub import AudioSegment
-except ImportError:
-    install("pydub")
-
-try:
-    import speech_recognition as sr
-except ImportError:
-    install("SpeechRecognition")
